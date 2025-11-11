@@ -1,243 +1,491 @@
-# cors
+# body-parser
 
-[![NPM Version][npm-image]][npm-url]
-[![NPM Downloads][downloads-image]][downloads-url]
-[![Build Status][travis-image]][travis-url]
+[![NPM Version][npm-version-image]][npm-url]
+[![NPM Downloads][npm-downloads-image]][npm-url]
+[![Build Status][ci-image]][ci-url]
 [![Test Coverage][coveralls-image]][coveralls-url]
+[![OpenSSF Scorecard Badge][ossf-scorecard-badge]][ossf-scorecard-visualizer]
 
-CORS is a node.js package for providing a [Connect](http://www.senchalabs.org/connect/)/[Express](http://expressjs.com/) middleware that can be used to enable [CORS](http://en.wikipedia.org/wiki/Cross-origin_resource_sharing) with various options.
+Node.js body parsing middleware.
 
-**[Follow me (@troygoode) on Twitter!](https://twitter.com/intent/user?screen_name=troygoode)**
+Parse incoming request bodies in a middleware before your handlers, available
+under the `req.body` property.
 
-* [Installation](#installation)
-* [Usage](#usage)
-  * [Simple Usage](#simple-usage-enable-all-cors-requests)
-  * [Enable CORS for a Single Route](#enable-cors-for-a-single-route)
-  * [Configuring CORS](#configuring-cors)
-  * [Configuring CORS Asynchronously](#configuring-cors-asynchronously)
-  * [Enabling CORS Pre-Flight](#enabling-cors-pre-flight)
-* [Configuration Options](#configuration-options)
-* [Demo](#demo)
-* [License](#license)
-* [Author](#author)
+**Note** As `req.body`'s shape is based on user-controlled input, all
+properties and values in this object are untrusted and should be validated
+before trusting. For example, `req.body.foo.toString()` may fail in multiple
+ways, for example the `foo` property may not be there or may not be a string,
+and `toString` may not be a function and instead a string or other user input.
+
+[Learn about the anatomy of an HTTP transaction in Node.js](https://nodejs.org/en/docs/guides/anatomy-of-an-http-transaction/).
+
+_This does not handle multipart bodies_, due to their complex and typically
+large nature. For multipart bodies, you may be interested in the following
+modules:
+
+  * [busboy](https://www.npmjs.org/package/busboy#readme) and
+    [connect-busboy](https://www.npmjs.org/package/connect-busboy#readme)
+  * [multiparty](https://www.npmjs.org/package/multiparty#readme) and
+    [connect-multiparty](https://www.npmjs.org/package/connect-multiparty#readme)
+  * [formidable](https://www.npmjs.org/package/formidable#readme)
+  * [multer](https://www.npmjs.org/package/multer#readme)
+
+This module provides the following parsers:
+
+  * [JSON body parser](#bodyparserjsonoptions)
+  * [Raw body parser](#bodyparserrawoptions)
+  * [Text body parser](#bodyparsertextoptions)
+  * [URL-encoded form body parser](#bodyparserurlencodedoptions)
+
+Other body parsers you might be interested in:
+
+- [body](https://www.npmjs.org/package/body#readme)
+- [co-body](https://www.npmjs.org/package/co-body#readme)
 
 ## Installation
 
-This is a [Node.js](https://nodejs.org/en/) module available through the
-[npm registry](https://www.npmjs.com/). Installation is done using the
-[`npm install` command](https://docs.npmjs.com/getting-started/installing-npm-packages-locally):
-
 ```sh
-$ npm install cors
+$ npm install body-parser
 ```
 
-## Usage
+## API
 
-### Simple Usage (Enable *All* CORS Requests)
+```js
+const bodyParser = require('body-parser')
+```
 
-```javascript
-var express = require('express')
-var cors = require('cors')
-var app = express()
+The `bodyParser` object exposes various factories to create middlewares. All
+middlewares will populate the `req.body` property with the parsed body when
+the `Content-Type` request header matches the `type` option.
 
-app.use(cors())
+The various errors returned by this module are described in the
+[errors section](#errors).
 
-app.get('/products/:id', function (req, res, next) {
-  res.json({msg: 'This is CORS-enabled for all origins!'})
-})
+### bodyParser.json([options])
 
-app.listen(80, function () {
-  console.log('CORS-enabled web server listening on port 80')
+Returns middleware that only parses `json` and only looks at requests where
+the `Content-Type` header matches the `type` option. This parser accepts any
+Unicode encoding of the body and supports automatic inflation of `gzip`,
+`br` (brotli) and `deflate` encodings.
+
+A new `body` object containing the parsed data is populated on the `request`
+object after the middleware (i.e. `req.body`).
+
+#### Options
+
+The `json` function takes an optional `options` object that may contain any of
+the following keys:
+
+##### inflate
+
+When set to `true`, then deflated (compressed) bodies will be inflated; when
+`false`, deflated bodies are rejected. Defaults to `true`.
+
+##### limit
+
+Controls the maximum request body size. If this is a number, then the value
+specifies the number of bytes; if it is a string, the value is passed to the
+[bytes](https://www.npmjs.com/package/bytes) library for parsing. Defaults
+to `'100kb'`.
+
+##### reviver
+
+The `reviver` option is passed directly to `JSON.parse` as the second
+argument. You can find more information on this argument
+[in the MDN documentation about JSON.parse](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/parse#Example.3A_Using_the_reviver_parameter).
+
+##### strict
+
+When set to `true`, will only accept arrays and objects; when `false` will
+accept anything `JSON.parse` accepts. Defaults to `true`.
+
+##### type
+
+The `type` option is used to determine what media type the middleware will
+parse. This option can be a string, array of strings, or a function. If not a
+function, `type` option is passed directly to the
+[type-is](https://www.npmjs.org/package/type-is#readme) library and this can
+be an extension name (like `json`), a mime type (like `application/json`), or
+a mime type with a wildcard (like `*/*` or `*/json`). If a function, the `type`
+option is called as `fn(req)` and the request is parsed if it returns a truthy
+value. Defaults to `application/json`.
+
+##### verify
+
+The `verify` option, if supplied, is called as `verify(req, res, buf, encoding)`,
+where `buf` is a `Buffer` of the raw request body and `encoding` is the
+encoding of the request. The parsing can be aborted by throwing an error.
+
+### bodyParser.raw([options])
+
+Returns middleware that parses all bodies as a `Buffer` and only looks at
+requests where the `Content-Type` header matches the `type` option. This
+parser supports automatic inflation of `gzip`, `br` (brotli) and `deflate`
+encodings.
+
+A new `body` object containing the parsed data is populated on the `request`
+object after the middleware (i.e. `req.body`). This will be a `Buffer` object
+of the body.
+
+#### Options
+
+The `raw` function takes an optional `options` object that may contain any of
+the following keys:
+
+##### inflate
+
+When set to `true`, then deflated (compressed) bodies will be inflated; when
+`false`, deflated bodies are rejected. Defaults to `true`.
+
+##### limit
+
+Controls the maximum request body size. If this is a number, then the value
+specifies the number of bytes; if it is a string, the value is passed to the
+[bytes](https://www.npmjs.com/package/bytes) library for parsing. Defaults
+to `'100kb'`.
+
+##### type
+
+The `type` option is used to determine what media type the middleware will
+parse. This option can be a string, array of strings, or a function.
+If not a function, `type` option is passed directly to the
+[type-is](https://www.npmjs.org/package/type-is#readme) library and this
+can be an extension name (like `bin`), a mime type (like
+`application/octet-stream`), or a mime type with a wildcard (like `*/*` or
+`application/*`). If a function, the `type` option is called as `fn(req)`
+and the request is parsed if it returns a truthy value. Defaults to
+`application/octet-stream`.
+
+##### verify
+
+The `verify` option, if supplied, is called as `verify(req, res, buf, encoding)`,
+where `buf` is a `Buffer` of the raw request body and `encoding` is the
+encoding of the request. The parsing can be aborted by throwing an error.
+
+### bodyParser.text([options])
+
+Returns middleware that parses all bodies as a string and only looks at
+requests where the `Content-Type` header matches the `type` option. This
+parser supports automatic inflation of `gzip`, `br` (brotli) and `deflate`
+encodings.
+
+A new `body` string containing the parsed data is populated on the `request`
+object after the middleware (i.e. `req.body`). This will be a string of the
+body.
+
+#### Options
+
+The `text` function takes an optional `options` object that may contain any of
+the following keys:
+
+##### defaultCharset
+
+Specify the default character set for the text content if the charset is not
+specified in the `Content-Type` header of the request. Defaults to `utf-8`.
+
+##### inflate
+
+When set to `true`, then deflated (compressed) bodies will be inflated; when
+`false`, deflated bodies are rejected. Defaults to `true`.
+
+##### limit
+
+Controls the maximum request body size. If this is a number, then the value
+specifies the number of bytes; if it is a string, the value is passed to the
+[bytes](https://www.npmjs.com/package/bytes) library for parsing. Defaults
+to `'100kb'`.
+
+##### type
+
+The `type` option is used to determine what media type the middleware will
+parse. This option can be a string, array of strings, or a function. If not
+a function, `type` option is passed directly to the
+[type-is](https://www.npmjs.org/package/type-is#readme) library and this can
+be an extension name (like `txt`), a mime type (like `text/plain`), or a mime
+type with a wildcard (like `*/*` or `text/*`). If a function, the `type`
+option is called as `fn(req)` and the request is parsed if it returns a
+truthy value. Defaults to `text/plain`.
+
+##### verify
+
+The `verify` option, if supplied, is called as `verify(req, res, buf, encoding)`,
+where `buf` is a `Buffer` of the raw request body and `encoding` is the
+encoding of the request. The parsing can be aborted by throwing an error.
+
+### bodyParser.urlencoded([options])
+
+Returns middleware that only parses `urlencoded` bodies and only looks at
+requests where the `Content-Type` header matches the `type` option. This
+parser accepts only UTF-8 encoding of the body and supports automatic
+inflation of `gzip`, `br` (brotli) and `deflate` encodings.
+
+A new `body` object containing the parsed data is populated on the `request`
+object after the middleware (i.e. `req.body`). This object will contain
+key-value pairs, where the value can be a string or array (when `extended` is
+`false`), or any type (when `extended` is `true`).
+
+#### Options
+
+The `urlencoded` function takes an optional `options` object that may contain
+any of the following keys:
+
+##### extended
+
+The "extended" syntax allows for rich objects and arrays to be encoded into the
+URL-encoded format, allowing for a JSON-like experience with URL-encoded. For
+more information, please [see the qs
+library](https://www.npmjs.org/package/qs#readme).
+
+Defaults to `false`.
+
+##### inflate
+
+When set to `true`, then deflated (compressed) bodies will be inflated; when
+`false`, deflated bodies are rejected. Defaults to `true`.
+
+##### limit
+
+Controls the maximum request body size. If this is a number, then the value
+specifies the number of bytes; if it is a string, the value is passed to the
+[bytes](https://www.npmjs.com/package/bytes) library for parsing. Defaults
+to `'100kb'`.
+
+##### parameterLimit
+
+The `parameterLimit` option controls the maximum number of parameters that
+are allowed in the URL-encoded data. If a request contains more parameters
+than this value, a 413 will be returned to the client. Defaults to `1000`.
+
+##### type
+
+The `type` option is used to determine what media type the middleware will
+parse. This option can be a string, array of strings, or a function. If not
+a function, `type` option is passed directly to the
+[type-is](https://www.npmjs.org/package/type-is#readme) library and this can
+be an extension name (like `urlencoded`), a mime type (like
+`application/x-www-form-urlencoded`), or a mime type with a wildcard (like
+`*/x-www-form-urlencoded`). If a function, the `type` option is called as
+`fn(req)` and the request is parsed if it returns a truthy value. Defaults
+to `application/x-www-form-urlencoded`.
+
+##### verify
+
+The `verify` option, if supplied, is called as `verify(req, res, buf, encoding)`,
+where `buf` is a `Buffer` of the raw request body and `encoding` is the
+encoding of the request. The parsing can be aborted by throwing an error.
+
+##### defaultCharset
+
+The default charset to parse as, if not specified in content-type. Must be
+either `utf-8` or `iso-8859-1`. Defaults to `utf-8`.
+
+##### charsetSentinel
+
+Whether to let the value of the `utf8` parameter take precedence as the charset
+selector. It requires the form to contain a parameter named `utf8` with a value
+of `✓`. Defaults to `false`.
+
+##### interpretNumericEntities
+
+Whether to decode numeric entities such as `&#9786;` when parsing an iso-8859-1
+form. Defaults to `false`.
+
+
+#### depth
+
+The `depth` option is used to configure the maximum depth of the `qs` library when `extended` is `true`. This allows you to limit the amount of keys that are parsed and can be useful to prevent certain types of abuse. Defaults to `32`. It is recommended to keep this value as low as possible.
+
+## Errors
+
+The middlewares provided by this module create errors using the
+[`http-errors` module](https://www.npmjs.com/package/http-errors). The errors
+will typically have a `status`/`statusCode` property that contains the suggested
+HTTP response code, an `expose` property to determine if the `message` property
+should be displayed to the client, a `type` property to determine the type of
+error without matching against the `message`, and a `body` property containing
+the read body, if available.
+
+The following are the common errors created, though any error can come through
+for various reasons.
+
+### content encoding unsupported
+
+This error will occur when the request had a `Content-Encoding` header that
+contained an encoding but the "inflation" option was set to `false`. The
+`status` property is set to `415`, the `type` property is set to
+`'encoding.unsupported'`, and the `charset` property will be set to the
+encoding that is unsupported.
+
+### entity parse failed
+
+This error will occur when the request contained an entity that could not be
+parsed by the middleware. The `status` property is set to `400`, the `type`
+property is set to `'entity.parse.failed'`, and the `body` property is set to
+the entity value that failed parsing.
+
+### entity verify failed
+
+This error will occur when the request contained an entity that could not be
+failed verification by the defined `verify` option. The `status` property is
+set to `403`, the `type` property is set to `'entity.verify.failed'`, and the
+`body` property is set to the entity value that failed verification.
+
+### request aborted
+
+This error will occur when the request is aborted by the client before reading
+the body has finished. The `received` property will be set to the number of
+bytes received before the request was aborted and the `expected` property is
+set to the number of expected bytes. The `status` property is set to `400`
+and `type` property is set to `'request.aborted'`.
+
+### request entity too large
+
+This error will occur when the request body's size is larger than the "limit"
+option. The `limit` property will be set to the byte limit and the `length`
+property will be set to the request body's length. The `status` property is
+set to `413` and the `type` property is set to `'entity.too.large'`.
+
+### request size did not match content length
+
+This error will occur when the request's length did not match the length from
+the `Content-Length` header. This typically occurs when the request is malformed,
+typically when the `Content-Length` header was calculated based on characters
+instead of bytes. The `status` property is set to `400` and the `type` property
+is set to `'request.size.invalid'`.
+
+### stream encoding should not be set
+
+This error will occur when something called the `req.setEncoding` method prior
+to this middleware. This module operates directly on bytes only and you cannot
+call `req.setEncoding` when using this module. The `status` property is set to
+`500` and the `type` property is set to `'stream.encoding.set'`.
+
+### stream is not readable
+
+This error will occur when the request is no longer readable when this middleware
+attempts to read it. This typically means something other than a middleware from
+this module read the request body already and the middleware was also configured to
+read the same request. The `status` property is set to `500` and the `type`
+property is set to `'stream.not.readable'`.
+
+### too many parameters
+
+This error will occur when the content of the request exceeds the configured
+`parameterLimit` for the `urlencoded` parser. The `status` property is set to
+`413` and the `type` property is set to `'parameters.too.many'`.
+
+### unsupported charset "BOGUS"
+
+This error will occur when the request had a charset parameter in the
+`Content-Type` header, but the `iconv-lite` module does not support it OR the
+parser does not support it. The charset is contained in the message as well
+as in the `charset` property. The `status` property is set to `415`, the
+`type` property is set to `'charset.unsupported'`, and the `charset` property
+is set to the charset that is unsupported.
+
+### unsupported content encoding "bogus"
+
+This error will occur when the request had a `Content-Encoding` header that
+contained an unsupported encoding. The encoding is contained in the message
+as well as in the `encoding` property. The `status` property is set to `415`,
+the `type` property is set to `'encoding.unsupported'`, and the `encoding`
+property is set to the encoding that is unsupported.
+
+### The input exceeded the depth
+
+This error occurs when using `bodyParser.urlencoded` with the `extended` property set to `true` and the input exceeds the configured `depth` option. The `status` property is set to `400`. It is recommended to review the `depth` option and evaluate if it requires a higher value. When the `depth` option is set to `32` (default value), the error will not be thrown.
+
+## Examples
+
+### Express/Connect top-level generic
+
+This example demonstrates adding a generic JSON and URL-encoded parser as a
+top-level middleware, which will parse the bodies of all incoming requests.
+This is the simplest setup.
+
+```js
+const express = require('express')
+const bodyParser = require('body-parser')
+
+const app = express()
+
+// parse application/x-www-form-urlencoded
+app.use(bodyParser.urlencoded())
+
+// parse application/json
+app.use(bodyParser.json())
+
+app.use(function (req, res) {
+  res.setHeader('Content-Type', 'text/plain')
+  res.write('you posted:\n')
+  res.end(String(JSON.stringify(req.body, null, 2)))
 })
 ```
 
-### Enable CORS for a Single Route
+### Express route-specific
 
-```javascript
-var express = require('express')
-var cors = require('cors')
-var app = express()
+This example demonstrates adding body parsers specifically to the routes that
+need them. In general, this is the most recommended way to use body-parser with
+Express.
 
-app.get('/products/:id', cors(), function (req, res, next) {
-  res.json({msg: 'This is CORS-enabled for a Single Route'})
+```js
+const express = require('express')
+const bodyParser = require('body-parser')
+
+const app = express()
+
+// create application/json parser
+const jsonParser = bodyParser.json()
+
+// create application/x-www-form-urlencoded parser
+const urlencodedParser = bodyParser.urlencoded()
+
+// POST /login gets urlencoded bodies
+app.post('/login', urlencodedParser, function (req, res) {
+  if (!req.body || !req.body.username) res.sendStatus(400)
+  res.send('welcome, ' + req.body.username)
 })
 
-app.listen(80, function () {
-  console.log('CORS-enabled web server listening on port 80')
-})
-```
-
-### Configuring CORS
-
-```javascript
-var express = require('express')
-var cors = require('cors')
-var app = express()
-
-var corsOptions = {
-  origin: 'http://example.com',
-  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
-}
-
-app.get('/products/:id', cors(corsOptions), function (req, res, next) {
-  res.json({msg: 'This is CORS-enabled for only example.com.'})
-})
-
-app.listen(80, function () {
-  console.log('CORS-enabled web server listening on port 80')
+// POST /api/users gets JSON bodies
+app.post('/api/users', jsonParser, function (req, res) {
+  if (!req.body) res.sendStatus(400)
+  // create user in req.body
 })
 ```
 
-### Configuring CORS w/ Dynamic Origin
+### Change accepted type for parsers
 
-```javascript
-var express = require('express')
-var cors = require('cors')
-var app = express()
+All the parsers accept a `type` option which allows you to change the
+`Content-Type` that the middleware will parse.
 
-var whitelist = ['http://example1.com', 'http://example2.com']
-var corsOptions = {
-  origin: function (origin, callback) {
-    if (whitelist.indexOf(origin) !== -1) {
-      callback(null, true)
-    } else {
-      callback(new Error('Not allowed by CORS'))
-    }
-  }
-}
+```js
+const express = require('express')
+const bodyParser = require('body-parser')
 
-app.get('/products/:id', cors(corsOptions), function (req, res, next) {
-  res.json({msg: 'This is CORS-enabled for a whitelisted domain.'})
-})
+const app = express()
 
-app.listen(80, function () {
-  console.log('CORS-enabled web server listening on port 80')
-})
+// parse various different custom JSON types as JSON
+app.use(bodyParser.json({ type: 'application/*+json' }))
+
+// parse some custom thing into a Buffer
+app.use(bodyParser.raw({ type: 'application/vnd.custom-type' }))
+
+// parse an HTML body into a string
+app.use(bodyParser.text({ type: 'text/html' }))
 ```
-
-If you do not want to block REST tools or server-to-server requests,
-add a `!origin` check in the origin function like so:
-
-```javascript
-var corsOptions = {
-  origin: function (origin, callback) {
-    if (whitelist.indexOf(origin) !== -1 || !origin) {
-      callback(null, true)
-    } else {
-      callback(new Error('Not allowed by CORS'))
-    }
-  }
-}
-```
-
-### Enabling CORS Pre-Flight
-
-Certain CORS requests are considered 'complex' and require an initial
-`OPTIONS` request (called the "pre-flight request"). An example of a
-'complex' CORS request is one that uses an HTTP verb other than
-GET/HEAD/POST (such as DELETE) or that uses custom headers. To enable
-pre-flighting, you must add a new OPTIONS handler for the route you want
-to support:
-
-```javascript
-var express = require('express')
-var cors = require('cors')
-var app = express()
-
-app.options('/products/:id', cors()) // enable pre-flight request for DELETE request
-app.del('/products/:id', cors(), function (req, res, next) {
-  res.json({msg: 'This is CORS-enabled for all origins!'})
-})
-
-app.listen(80, function () {
-  console.log('CORS-enabled web server listening on port 80')
-})
-```
-
-You can also enable pre-flight across-the-board like so:
-
-```javascript
-app.options('*', cors()) // include before other routes
-```
-
-### Configuring CORS Asynchronously
-
-```javascript
-var express = require('express')
-var cors = require('cors')
-var app = express()
-
-var whitelist = ['http://example1.com', 'http://example2.com']
-var corsOptionsDelegate = function (req, callback) {
-  var corsOptions;
-  if (whitelist.indexOf(req.header('Origin')) !== -1) {
-    corsOptions = { origin: true } // reflect (enable) the requested origin in the CORS response
-  } else {
-    corsOptions = { origin: false } // disable CORS for this request
-  }
-  callback(null, corsOptions) // callback expects two parameters: error and options
-}
-
-app.get('/products/:id', cors(corsOptionsDelegate), function (req, res, next) {
-  res.json({msg: 'This is CORS-enabled for a whitelisted domain.'})
-})
-
-app.listen(80, function () {
-  console.log('CORS-enabled web server listening on port 80')
-})
-```
-
-## Configuration Options
-
-* `origin`: Configures the **Access-Control-Allow-Origin** CORS header. Possible values:
-  - `Boolean` - set `origin` to `true` to reflect the [request origin](http://tools.ietf.org/html/draft-abarth-origin-09), as defined by `req.header('Origin')`, or set it to `false` to disable CORS.
-  - `String` - set `origin` to a specific origin. For example if you set it to `"http://example.com"` only requests from "http://example.com" will be allowed.
-  - `RegExp` - set `origin` to a regular expression pattern which will be used to test the request origin. If it's a match, the request origin will be reflected. For example the pattern `/example\.com$/` will reflect any request that is coming from an origin ending with "example.com".
-  - `Array` - set `origin` to an array of valid origins. Each origin can be a `String` or a `RegExp`. For example `["http://example1.com", /\.example2\.com$/]` will accept any request from "http://example1.com" or from a subdomain of "example2.com".
-  - `Function` - set `origin` to a function implementing some custom logic. The function takes the request origin as the first parameter and a callback (which expects the signature `err [object], allow [bool]`) as the second.
-* `methods`: Configures the **Access-Control-Allow-Methods** CORS header. Expects a comma-delimited string (ex: 'GET,PUT,POST') or an array (ex: `['GET', 'PUT', 'POST']`).
-* `allowedHeaders`: Configures the **Access-Control-Allow-Headers** CORS header. Expects a comma-delimited string (ex: 'Content-Type,Authorization') or an array (ex: `['Content-Type', 'Authorization']`). If not specified, defaults to reflecting the headers specified in the request's **Access-Control-Request-Headers** header.
-* `exposedHeaders`: Configures the **Access-Control-Expose-Headers** CORS header. Expects a comma-delimited string (ex: 'Content-Range,X-Content-Range') or an array (ex: `['Content-Range', 'X-Content-Range']`). If not specified, no custom headers are exposed.
-* `credentials`: Configures the **Access-Control-Allow-Credentials** CORS header. Set to `true` to pass the header, otherwise it is omitted.
-* `maxAge`: Configures the **Access-Control-Max-Age** CORS header. Set to an integer to pass the header, otherwise it is omitted.
-* `preflightContinue`: Pass the CORS preflight response to the next handler.
-* `optionsSuccessStatus`: Provides a status code to use for successful `OPTIONS` requests, since some legacy browsers (IE11, various SmartTVs) choke on `204`.
-
-The default configuration is the equivalent of:
-
-```json
-{
-  "origin": "*",
-  "methods": "GET,HEAD,PUT,PATCH,POST,DELETE",
-  "preflightContinue": false,
-  "optionsSuccessStatus": 204
-}
-```
-
-For details on the effect of each CORS header, read [this](http://www.html5rocks.com/en/tutorials/cors/) article on HTML5 Rocks.
-
-## Demo
-
-A demo that illustrates CORS working (and not working) using jQuery is available here: [http://node-cors-client.herokuapp.com/](http://node-cors-client.herokuapp.com/)
-
-Code for that demo can be found here:
-
-* Client: [https://github.com/TroyGoode/node-cors-client](https://github.com/TroyGoode/node-cors-client)
-* Server: [https://github.com/TroyGoode/node-cors-server](https://github.com/TroyGoode/node-cors-server)
 
 ## License
 
-[MIT License](http://www.opensource.org/licenses/mit-license.php)
+[MIT](LICENSE)
 
-## Author
-
-[Troy Goode](https://github.com/TroyGoode) ([troygoode@gmail.com](mailto:troygoode@gmail.com))
-
-[coveralls-image]: https://img.shields.io/coveralls/expressjs/cors/master.svg
-[coveralls-url]: https://coveralls.io/r/expressjs/cors?branch=master
-[downloads-image]: https://img.shields.io/npm/dm/cors.svg
-[downloads-url]: https://npmjs.org/package/cors
-[npm-image]: https://img.shields.io/npm/v/cors.svg
-[npm-url]: https://npmjs.org/package/cors
-[travis-image]: https://img.shields.io/travis/expressjs/cors/master.svg
-[travis-url]: https://travis-ci.org/expressjs/cors
+[ci-image]: https://badgen.net/github/checks/expressjs/body-parser/master?label=ci
+[ci-url]: https://github.com/expressjs/body-parser/actions/workflows/ci.yml
+[coveralls-image]: https://badgen.net/coveralls/c/github/expressjs/body-parser/master
+[coveralls-url]: https://coveralls.io/r/expressjs/body-parser?branch=master
+[node-version-image]: https://badgen.net/npm/node/body-parser
+[node-version-url]: https://nodejs.org/en/download
+[npm-downloads-image]: https://badgen.net/npm/dm/body-parser
+[npm-url]: https://npmjs.org/package/body-parser
+[npm-version-image]: https://badgen.net/npm/v/body-parser
+[ossf-scorecard-badge]: https://api.scorecard.dev/projects/github.com/expressjs/body-parser/badge
+[ossf-scorecard-visualizer]: https://ossf.github.io/scorecard-visualizer/#/projects/github.com/expressjs/body-parser

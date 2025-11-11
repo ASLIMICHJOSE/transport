@@ -1,41 +1,49 @@
 {
-  "name": "cors",
-  "description": "Node.js CORS middleware",
-  "version": "2.8.5",
-  "author": "Troy Goode <troygoode@gmail.com> (https://github.com/troygoode/)",
-  "license": "MIT",
-  "keywords": [
-    "cors",
-    "express",
-    "connect",
-    "middleware"
+  "name": "body-parser",
+  "description": "Node.js body parsing middleware",
+  "version": "2.2.0",
+  "contributors": [
+    "Douglas Christopher Wilson <doug@somethingdoug.com>",
+    "Jonathan Ong <me@jongleberry.com> (http://jongleberry.com)"
   ],
-  "repository": "expressjs/cors",
-  "main": "./lib/index.js",
+  "license": "MIT",
+  "repository": "expressjs/body-parser",
   "dependencies": {
-    "object-assign": "^4",
-    "vary": "^1"
+    "bytes": "^3.1.2",
+    "content-type": "^1.0.5",
+    "debug": "^4.4.0",
+    "http-errors": "^2.0.0",
+    "iconv-lite": "^0.6.3",
+    "on-finished": "^2.4.1",
+    "qs": "^6.14.0",
+    "raw-body": "^3.0.0",
+    "type-is": "^2.0.0"
   },
   "devDependencies": {
-    "after": "0.8.2",
-    "eslint": "2.13.1",
-    "express": "4.16.3",
-    "mocha": "5.2.0",
-    "nyc": "13.1.0",
-    "supertest": "3.3.0"
+    "eslint": "8.34.0",
+    "eslint-config-standard": "14.1.1",
+    "eslint-plugin-import": "2.27.5",
+    "eslint-plugin-markdown": "3.0.0",
+    "eslint-plugin-node": "11.1.0",
+    "eslint-plugin-promise": "6.1.1",
+    "eslint-plugin-standard": "4.1.0",
+    "mocha": "^11.1.0",
+    "nyc": "^17.1.0",
+    "supertest": "^7.0.0"
   },
   "files": [
-    "lib/index.js",
-    "CONTRIBUTING.md",
-    "HISTORY.md",
+    "lib/",
     "LICENSE",
-    "README.md"
+    "HISTORY.md",
+    "index.js"
   ],
   "engines": {
-    "node": ">= 0.10"
+    "node": ">=18"
   },
   "scripts": {
-    "test": "npm run lint && nyc --reporter=html --reporter=text mocha --require test/support/env",
-    "lint": "eslint lib test"
+    "lint": "eslint .",
+    "test": "mocha --reporter spec --check-leaks test/",
+    "test-ci": "nyc --reporter=lcovonly --reporter=text npm test",
+    "test-cov": "nyc --reporter=html --reporter=text npm test"
   }
 }
